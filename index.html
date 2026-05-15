@@ -1,0 +1,58 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>3D Cube Planner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}body{margin:0;background:#111827;color:#fff;overflow:hidden}.app{display:flex;height:100vh}.left{width:380px;background:#1f2937;padding:20px;overflow:auto;border-right:1px solid #333}.right{flex:1;position:relative}.card{background:#374151;padding:12px;border-radius:12px;margin-top:10px}.row{display:flex;gap:8px}.row>*{flex:1}input,button,select{width:100%;padding:10px;border:none;border-radius:8px;background:#4b5563;color:#fff}button{cursor:pointer;background:#2563eb}.danger{background:#dc2626}.topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:10px;z-index:5;flex-wrap:wrap}.stat{background:rgba(0,0,0,.65);padding:10px 14px;border-radius:10px;backdrop-filter:blur(4px)}canvas{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="left">
+<h2>3D Cube Planner</h2>
+<label>Big Cube Size</label>
+<input id="bigSize" type="number" value="1000" min="1">
+<label style="margin-top:10px;display:block">Unit</label>
+<select id="unit"><option>ft</option><option>m</option></select>
+<button onclick="rebuild()" style="margin-top:10px">Update Big Cube</button>
+
+<h3>Add Cube Type</h3>
+<div class="row">
+<input id="cubeSize" type="number" placeholder="Size" value="50">
+<input id="cubeCount" type="number" placeholder="Count" value="100">
+</div>
+<button onclick="addCube()" style="margin-top:10px">Add Cube</button>
+<button onclick="resetAll()" class="danger" style="margin-top:10px">Reset All</button>
+<div id="cubeList"></div>
+</div>
+<div class="right">
+<div class="topbar" id="stats"></div>
+</div>
+</div>
+<script>
+let scene,camera,renderer,controls,bigCube,grid;
+const cubeSets=[];let meshes=[];
+const right=document.querySelector('.right');
+init();animate();
+function init(){scene=new THREE.Scene();scene.background=new THREE.Color(0x111827);camera=new THREE.PerspectiveCamera(60,right.clientWidth/right.clientHeight,.1,100000);camera.position.set(1500,1200,1500);renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(right.clientWidth,right.clientHeight);right.appendChild(renderer.domElement);controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;scene.add(new THREE.AmbientLight(0xffffff,1.2));const d=new THREE.DirectionalLight(0xffffff,1.5);d.position.set(1000,1000,1000);scene.add(d);window.addEventListener('resize',resize);rebuild();}
+function resize(){camera.aspect=right.clientWidth/right.clientHeight;camera.updateProjectionMatrix();renderer.setSize(right.clientWidth,right.clientHeight)}
+function rebuild(){const size=+bigSize.value; if(bigCube)scene.remove(bigCube); if(grid)scene.remove(grid); const geo=new THREE.BoxGeometry(size,size,size); const edges=new THREE.EdgesGeometry(geo); bigCube=new THREE.LineSegments(edges,new THREE.LineBasicMaterial({color:0x60a5fa})); scene.add(bigCube); grid=new THREE.GridHelper(size,size/20,0x444444,0x333333); scene.add(grid); repack();}
+function addCube(){cubeSets.push({id:Date.now()+Math.random(),size:+cubeSize.value,count:+cubeCount.value,color:'#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0')}); renderList(); repack();}
+function updateCube(id,key,val){const c=cubeSets.find(x=>x.id===id); c[key]=key==='count'||key==='size'?+val:val; repack();}
+function removeCube(id){const i=cubeSets.findIndex(x=>x.id===id); cubeSets.splice(i,1); renderList(); repack();}
+function resetAll(){cubeSets.length=0;renderList();repack();}
+function renderList(){cubeList.innerHTML=''; cubeSets.forEach(c=>{cubeList.innerHTML+=`<div class='card'><div class='row'><input type='number' value='${c.size}' onchange='updateCube(${c.id},"size",this.value)'><input type='number' value='${c.count}' onchange='updateCube(${c.id},"count",this.value)'><input type='color' value='${c.color}' onchange='updateCube(${c.id},"color",this.value)'></div><button class='danger' onclick='removeCube(${c.id})' style='margin-top:8px'>Remove</button></div>`})}
+function repack(){meshes.forEach(m=>scene.remove(m));meshes=[]; const big=+bigSize.value; const occupied=new Set(); let usedVol=0, rendered=0, requested=0;
+ cubeSets.forEach(set=>{requested+=set.count; const fit=Math.floor(big/set.size); const mat=new THREE.MeshStandardMaterial({color:set.color}); let placed=0; for(let x=0;x<fit&&placed<set.count;x++){for(let y=0;y<fit&&placed<set.count;y++){for(let z=0;z<fit&&placed<set.count;z++){const key=`${x},${y},${z},${set.size}`; const posKey=`${Math.floor((x*set.size)/10)},${Math.floor((y*set.size)/10)},${Math.floor((z*set.size)/10)}`; if(occupied.has(posKey)) continue; occupied.add(posKey); const cube=new THREE.Mesh(new THREE.BoxGeometry(set.size,set.size,set.size),mat); cube.position.set(x*set.size-big/2+set.size/2,y*set.size-big/2+set.size/2,z*set.size-big/2+set.size/2); scene.add(cube); meshes.push(cube); usedVol += Math.pow(set.size,3); rendered++; placed++; }}}});
+ const totalVol=Math.pow(big,3); const remain=Math.max(0,totalVol-usedVol); const fill=((usedVol/totalVol)*100).toFixed(2); stats.innerHTML=`<div class='stat'><b>Total</b><br>${fmt(totalVol)} ${unit.value}³</div><div class='stat'><b>Used</b><br>${fmt(usedVol)} ${unit.value}³</div><div class='stat'><b>Left</b><br>${fmt(remain)} ${unit.value}³</div><div class='stat'><b>Fill</b><br>${fill}%</div><div class='stat'><b>Cube Types</b><br>${cubeSets.length}</div><div class='stat'><b>Cubes Placed</b><br>${rendered}/${requested}</div>`;}
+function fmt(n){return Math.round(n).toLocaleString()}
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)}
+</script>
+</body>
+</html>
+```
